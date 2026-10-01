@@ -1,0 +1,16 @@
+arsenal/session/surface_profile.json
+
+arsenal/session/rate_limits.json
+
+arsenal/session/budget_iterations.json
+
+arsenal/session/worktree_isolation
+
+arsenal/session/worktree_isolation.why
+
+arsenal/session/host_branch
+
+arsenal/session/rescue_refs
+
+.claude/skills/*/findings.md
+dist/
