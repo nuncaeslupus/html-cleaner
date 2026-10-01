@@ -14,3 +14,4 @@ arsenal/session/rescue_refs
 
 .claude/skills/*/findings.md
 dist/
+__pycache__/
