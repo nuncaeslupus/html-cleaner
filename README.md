@@ -8,9 +8,13 @@ A bookmarklet that removes annoyances from the page you are on, if it has a rule
 make build
 ```
 
-Open `dist/install.html` and drag the **Clean page** link to your bookmarks bar
-(or create a bookmark by hand and paste `dist/bookmarklet.txt` as its URL).
-Rebuild and replace the bookmark after changing rules.
+Open `dist/install.html` and drag one of the links to your bookmarks bar:
+
+- **Clean page** fetches the latest `cleaner.js` from this repo's `main` on every click, so new rules
+  arrive a few minutes after they merge with nothing to reinstall. It runs whatever is on `main`, so
+  keep the branch protected.
+- **Clean page (offline)** is a frozen copy, for sites whose security policy blocks the fetch.
+  Rebuild and replace it after changing rules.
 
 ## Sites
 
