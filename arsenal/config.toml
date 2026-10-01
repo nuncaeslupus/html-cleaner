@@ -125,7 +125,7 @@ context-window = 0
 # lands inside the table instead of at the top level.
 queue-automation = true
 
-branch-protection = "off"
+branch-protection = "applied"
 
 [models]
 orchestrator = ""
