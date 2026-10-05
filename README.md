@@ -21,6 +21,7 @@ Open `dist/install.html` and drag one of the links to your bookmarks bar:
 | Site | What it does |
 | --- | --- |
 | jobfluent.com | Shows the full offer description hidden behind "Entrar con LinkedIn" |
+| jobleads.com | Removes the "Regístrate para ver el trabajo" wall and blur, and links the original posting (the page itself only carries a summary) |
 
 ## Adding a site
 
