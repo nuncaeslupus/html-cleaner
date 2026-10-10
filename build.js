@@ -9,8 +9,10 @@ const path = require('node:path');
 
 const LATEST = 'https://raw.githubusercontent.com/nuncaeslupus/html-cleaner/main/rules.json';
 
-// Single-element selectors only (tag, #id, .class, [attr]): readable at a glance in review.
-const SELECTOR = /^([a-z][a-z0-9-]*|[#.][A-Za-z_][\w-]*|\[[A-Za-z_][\w-]*\])$/;
+// Selectors stay readable at a glance in review: tags, #id, .class and [attr] / [attr="value"],
+// chained (div.a[b]) and nested with a space or `>`. Pseudo-classes, `,`, `+` and `~` are not allowed.
+const SIMPLE = String.raw`(?:[a-z][a-z0-9-]*|[#.][A-Za-z_][\w-]*|\[[A-Za-z_][\w-]*(?:="[^"\\]*")?\])`;
+const SELECTOR = new RegExp(String.raw`^${SIMPLE}+(?:\s*[ >]\s*${SIMPLE}+)*$`);
 const NAME = /^[A-Za-z_][\w-]*$/;
 const selectorAnd = (min, rest) => (arg) =>
   Array.isArray(arg) && arg.length >= min && SELECTOR.test(arg[0]) && arg.slice(1).every((x) => rest.test(x));
@@ -18,7 +20,11 @@ const STEPS = {
   remove: (arg) => SELECTOR.test(arg),
   removeClass: selectorAnd(2, NAME),
   addClass: selectorAnd(2, NAME),
-  removeAttr: (arg) => selectorAnd(2, NAME)(arg) && arg.length === 2,
+  removeAttr: selectorAnd(2, NAME),
+  // No url(): a style must not make the page fetch anything.
+  style: (arg) =>
+    Array.isArray(arg) && arg.length === 3 && SELECTOR.test(arg[0]) && /^-?[a-z][a-z-]*$/.test(arg[1]) &&
+    /^[\w\s.%#(),-]*$/.test(arg[2]) && !/url\s*\(/i.test(arg[2]),
   linkFrom: (arg) =>
     arg && Object.keys(arg).sort().join() === 'after,nuxt' && NAME.test(arg.nuxt) && SELECTOR.test(arg.after),
 };
@@ -39,7 +45,7 @@ function loadRules(dir = 'rules') {
     rule.steps.forEach((step, i) => {
       const [name, ...extra] = Object.keys(step ?? {});
       if (!Object.hasOwn(STEPS, name) || extra.length) fail(`step ${i + 1}: one of ${Object.keys(STEPS).join(', ')}`);
-      if (!STEPS[name](step[name])) fail(`step ${i + 1}: bad argument to ${name} (selectors: tag, #id, .class, [attr])`);
+      if (!STEPS[name](step[name])) fail(`step ${i + 1}: bad argument to ${name} (see README, Adding a site)`);
     });
     rules[host] = rule;
   }

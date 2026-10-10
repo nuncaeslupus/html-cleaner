@@ -12,7 +12,8 @@ Open `dist/install.html` and drag one of the links to your bookmarks bar:
 
 - **Clean page** fetches the latest `rules.json` from this repo's `main` on every click, so new rules
   arrive a few minutes after they merge with nothing to reinstall. Rules are data: the bookmark only
-  runs the interpreter it was built with, so a rule can never run code.
+  runs the interpreter it was built with, so a rule can never run code. Reinstall only when a new
+  step type ships; until then a rule that uses it says so in an alert.
 - **Clean page (offline)** is a frozen copy, for sites whose security policy blocks the fetch.
   Rebuild and replace it after changing rules.
 
@@ -41,9 +42,11 @@ A site is one data file, `rules/<host>.json`, which also applies to the host's s
 | --- | --- | --- |
 | `remove` | `selector` | Removes the matching elements |
 | `removeClass` / `addClass` | `[selector, class, …]` | Removes / adds classes on the matching elements |
-| `removeAttr` | `[selector, attribute]` | Removes an attribute from the matching elements |
+| `removeAttr` | `[selector, attribute, …]` | Removes attributes (`inert`, `aria-hidden`…) from the matching elements |
+| `style` | `[selector, property, value]` | Forces an inline style (`filter: none`, `overflow: auto`…); an empty value removes it. No `url()` |
 | `linkFrom` | `{"nuxt": key, "after": selector}` | Adds a link after the matching elements to the URL under `key` in the page's Nuxt payload (http(s) only) |
 
-Selectors are a single tag, `#id`, `.class` or `[attr]`. Add the page as a recorded excerpt in
+Selectors are tags, `#id`, `.class`, `[attr]` and `[attr="value"]`, chained (`div.a[b]`) and nested
+with a space or `>`. Add the page as a recorded excerpt in
 `fixtures/<host>.html` and the expected result in `fixtures/<host>.clean.html`, then `make test build`
 (the build also regenerates `rules.json`; commit it).

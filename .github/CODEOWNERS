@@ -1,0 +1,9 @@
+# Code that runs in the browser, or builds and tests what does. Rule PRs only touch rules/,
+# fixtures/ and rules.json, which are data.
+/cleaner.js @nuncaeslupus
+/build.js @nuncaeslupus
+/test.js @nuncaeslupus
+/package.json @nuncaeslupus
+/package-lock.json @nuncaeslupus
+/Makefile @nuncaeslupus
+/.github/ @nuncaeslupus

@@ -42,6 +42,19 @@ test('linkFrom: does not link a non-http URL', () => {
   assert.doesNotMatch(clean(html, 'www.jobleads.com').body, /<a /);
 });
 
+test('style and removeAttr: override styles, drop several attributes', () => {
+  const html = '<body style="overflow: hidden"><p class="a" inert aria-hidden="true" style="filter: blur(4px)">x</p></body>';
+  const { body } = clean(html, 'example.com', {
+    'example.com': {
+      steps: [
+        { style: ['p.a', 'filter', 'none'] },
+        { removeAttr: ['p.a', 'inert', 'aria-hidden'] },
+      ],
+    },
+  });
+  assert.strictEqual(body, '<p class="a" style="filter: none !important;">x</p>');
+});
+
 test('unknown step: skipped with an alert', () => {
   const { alerts } = clean('<p></p>', 'example.com', { 'example.com': { steps: [{ constructor: 'x' }] } });
   assert.strictEqual(alerts.length, 1);
@@ -54,7 +67,9 @@ test('rules.json is the bundle of rules/*.json (run make build)', () => {
 test('validation rejects code-shaped or complex rules', () => {
   const bad = [
     ['example.com.json', { about: 'x', steps: [{ eval: 'alert(1)' }] }],
-    ['example.com.json', { about: 'x', steps: [{ remove: 'div > .a' }] }],
+    ['example.com.json', { about: 'x', steps: [{ remove: 'a:hover' }] }],
+    ['example.com.json', { about: 'x', steps: [{ remove: '.a, .b' }] }],
+    ['example.com.json', { about: 'x', steps: [{ style: ['body', 'background', 'url(https://x.test/t.gif)'] }] }],
     ['example.com.json', { about: 'x', steps: [{ linkFrom: { nuxt: 'u', after: '.a', href: 'x' } }] }],
     ['not a host.json', { about: 'x', steps: [{ remove: '.a' }] }],
   ];
@@ -63,4 +78,11 @@ test('validation rejects code-shaped or complex rules', () => {
     fs.writeFileSync(path.join(dir, file), JSON.stringify(rule));
     assert.throws(() => loadRules(dir), new RegExp(file.replace(/\./g, '\\.')));
   }
+});
+
+test('validation accepts chained and nested selectors', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rules-'));
+  const steps = ['div.a[b]', 'main > .c #d', '[data-x="y z"]'].map((remove) => ({ remove }));
+  fs.writeFileSync(path.join(dir, 'example.com.json'), JSON.stringify({ about: 'x', steps }));
+  assert.strictEqual(loadRules(dir)['example.com'].steps.length, 3);
 });
