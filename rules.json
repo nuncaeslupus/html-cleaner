@@ -1,0 +1,45 @@
+{
+  "jobfluent.com": {
+    "about": "Shows the full offer description hidden behind \"Entrar con LinkedIn\". The text is already in the DOM; the wall is only CSS classes.",
+    "steps": [
+      {
+        "removeClass": [
+          ".offer-description",
+          "hide-desc-true"
+        ]
+      },
+      {
+        "addClass": [
+          ".offer-description",
+          "open"
+        ]
+      }
+    ]
+  },
+  "jobleads.com": {
+    "about": "Removes the \"Regístrate para ver el trabajo\" wall (a modal, an inert page and a blur) and links the original posting, since the page itself only carries a summary.",
+    "steps": [
+      {
+        "remove": ".RegistrationModal"
+      },
+      {
+        "removeAttr": [
+          "[inert]",
+          "inert"
+        ]
+      },
+      {
+        "linkFrom": {
+          "nuxt": "sourceUrl",
+          "after": ".job-preview-description--blurred"
+        }
+      },
+      {
+        "removeClass": [
+          ".job-preview-description--blurred",
+          "job-preview-description--blurred"
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "html-cleaner",
+  "private": true,
+  "description": "A bookmarklet that removes annoyances from the page you are on, if it has a rule for that site.",
+  "scripts": {
+    "build": "node build.js",
+    "test": "node --test test.js"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1"
+  }
+}

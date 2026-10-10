@@ -1,0 +1,7 @@
+{
+  "about": "Shows the full offer description hidden behind \"Entrar con LinkedIn\". The text is already in the DOM; the wall is only CSS classes.",
+  "steps": [
+    { "removeClass": [".offer-description", "hide-desc-true"] },
+    { "addClass": [".offer-description", "open"] }
+  ]
+}

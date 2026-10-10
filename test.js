@@ -1,69 +1,88 @@
+// Each rules/<host>.json runs against fixtures/<host>.html, and the page must come out as
+// fixtures/<host>.clean.html. No network: the fixtures are recorded excerpts.
 const assert = require('node:assert');
 const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const test = require('node:test');
-const vm = require('node:vm');
+const { JSDOM } = require('jsdom');
+const { loadRules, bundle } = require('./build.js');
 
-const source = fs.readFileSync('cleaner.js', 'utf8');
+const interpreter = fs.readFileSync('cleaner.js', 'utf8');
+const rules = loadRules();
 
-function run(hostname, classes) {
-  const el = {
-    classes: new Set(classes),
-    classList: { remove: (c) => el.classes.delete(c), add: (c) => el.classes.add(c) },
-  };
+// Runs the interpreter with `rules` on `html` as served from `hostname`; returns the body and any alerts.
+function clean(html, hostname, withRules = rules) {
+  const dom = new JSDOM(html, { url: `https://${hostname}/`, runScripts: 'outside-only' });
   const alerts = [];
-  vm.runInNewContext(source, {
-    location: { hostname },
-    document: { querySelectorAll: () => [el] },
-    alert: (message) => alerts.push(message),
+  dom.window.alert = (message) => alerts.push(message);
+  dom.window.eval(`(${interpreter})`)(withRules);
+  return { body: dom.window.document.body.innerHTML.trim(), alerts };
+}
+const fixture = (name) => fs.readFileSync(path.join('fixtures', name), 'utf8');
+
+for (const host of Object.keys(rules)) {
+  test(`${host}: cleans its fixture`, () => {
+    const { body, alerts } = clean(fixture(`${host}.html`), `www.${host}`);
+    const expected = new JSDOM(fixture(`${host}.clean.html`)).window.document.body.innerHTML.trim();
+    assert.strictEqual(body, expected);
+    assert.deepStrictEqual(alerts, []);
   });
-  return { classes: [...el.classes], alerts };
 }
 
-test('jobfluent: unhides and expands the description', () => {
-  const { classes, alerts } = run('www.jobfluent.com', ['offer-description', 'hide-desc-true']);
-  assert.deepStrictEqual(classes, ['offer-description', 'open']);
-  assert.deepStrictEqual(alerts, []);
-});
-
 test('unknown host: touches nothing and says so', () => {
-  const { classes, alerts } = run('notjobfluent.com', ['hide-desc-true']);
-  assert.deepStrictEqual(classes, ['hide-desc-true']);
+  const html = fixture('jobfluent.com.html');
+  const { body, alerts } = clean(html, 'notjobfluent.com');
+  assert.strictEqual(body, new JSDOM(html).window.document.body.innerHTML.trim());
   assert.strictEqual(alerts.length, 1);
 });
 
-function runJobleads(sourceUrl) {
-  const removed = [];
-  const added = [];
-  const el = (classes) => ({
-    classes: new Set(classes),
-    classList: { remove: (c) => removed.push(c) },
-    remove: () => removed.push('modal'),
-    removeAttribute: (name) => removed.push(name),
-    after: (node) => added.push(node.href),
-  });
-  const found = {
-    '.RegistrationModal': [el()],
-    '[inert]': [el()],
-    '.job-preview-description--blurred': [el()],
-  };
-  vm.runInNewContext(source, {
-    location: { hostname: 'www.jobleads.com' },
-    document: {
-      querySelectorAll: (selector) => found[selector],
-      // Nuxt payload: objects hold indexes into the same array.
-      querySelector: () => ({ textContent: JSON.stringify([{ job: 1 }, { sourceUrl: 2 }, sourceUrl]) }),
-      createElement: () => ({}),
-    },
-  });
-  return { removed, added };
-}
-
-test('jobleads: drops the wall and links the original posting', () => {
-  const { removed, added } = runJobleads('https://jobs.lever.co/acme/1');
-  assert.deepStrictEqual(removed, ['modal', 'inert', 'job-preview-description--blurred']);
-  assert.deepStrictEqual(added, ['https://jobs.lever.co/acme/1']);
+test('linkFrom: does not link a non-http URL', () => {
+  const html = fixture('jobleads.com.html').replace('https://jobs.lever.co/acme/1', 'javascript:alert(1)');
+  assert.doesNotMatch(clean(html, 'www.jobleads.com').body, /<a /);
 });
 
-test('jobleads: does not link a non-http source URL', () => {
-  assert.deepStrictEqual(runJobleads('javascript:alert(1)').added, []);
+test('style and removeAttr: override styles, drop several attributes', () => {
+  const html = '<body style="overflow: hidden"><p class="a" inert aria-hidden="true" style="filter: blur(4px)">x</p></body>';
+  const { body } = clean(html, 'example.com', {
+    'example.com': {
+      steps: [
+        { style: ['p.a', 'filter', 'none'] },
+        { removeAttr: ['p.a', 'inert', 'aria-hidden'] },
+      ],
+    },
+  });
+  assert.strictEqual(body, '<p class="a" style="filter: none !important;">x</p>');
+});
+
+test('unknown step: skipped with an alert', () => {
+  const { alerts } = clean('<p></p>', 'example.com', { 'example.com': { steps: [{ constructor: 'x' }] } });
+  assert.strictEqual(alerts.length, 1);
+});
+
+test('rules.json is the bundle of rules/*.json (run make build)', () => {
+  assert.strictEqual(fs.readFileSync('rules.json', 'utf8'), bundle(rules));
+});
+
+test('validation rejects code-shaped or complex rules', () => {
+  const bad = [
+    ['example.com.json', { about: 'x', steps: [{ eval: 'alert(1)' }] }],
+    ['example.com.json', { about: 'x', steps: [{ remove: 'a:hover' }] }],
+    ['example.com.json', { about: 'x', steps: [{ remove: '.a, .b' }] }],
+    ['example.com.json', { about: 'x', steps: [{ style: ['body', 'background', 'url(https://x.test/t.gif)'] }] }],
+    ['example.com.json', { about: 'x', steps: [{ linkFrom: { nuxt: 'u', after: '.a', href: 'x' } }] }],
+    ['not a host.json', { about: 'x', steps: [{ remove: '.a' }] }],
+  ];
+  for (const [file, rule] of bad) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rules-'));
+    fs.writeFileSync(path.join(dir, file), JSON.stringify(rule));
+    assert.throws(() => loadRules(dir), new RegExp(file.replace(/\./g, '\\.')));
+  }
+});
+
+test('validation accepts chained and nested selectors', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rules-'));
+  const steps = ['div.a[b]', 'main > .c #d', '[data-x="y z"]'].map((remove) => ({ remove }));
+  fs.writeFileSync(path.join(dir, 'example.com.json'), JSON.stringify({ about: 'x', steps }));
+  assert.strictEqual(loadRules(dir)['example.com'].steps.length, 3);
 });
