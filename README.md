@@ -50,3 +50,7 @@ Selectors are tags, `#id`, `.class`, `[attr]` and `[attr="value"]`, chained (`di
 with a space or `>`. Add the page as a recorded excerpt in
 `fixtures/<host>.html` and the expected result in `fixtures/<host>.clean.html`, then `make test build`
 (the build also regenerates `rules.json`; commit it).
+
+## Built with claude-arsenal
+
+This repository is developed with [claude-arsenal](https://github.com/nuncaeslupus/claude-arsenal), a Claude Code plugin marketplace for spec-driven work: specs before code, failing tests first, acceptance gates with numbers. The vendored skills live in `claude-arsenal/`.
