@@ -1,6 +1,7 @@
 {
   "name": "html-cleaner",
   "private": true,
+  "license": "MIT",
   "description": "A bookmarklet that removes annoyances from the page you are on, if it has a rule for that site.",
   "scripts": {
     "build": "node build.js",
