@@ -22,7 +22,7 @@ make build
 rules.json and dist/install.html written (auto-update 3839 chars, offline 3995 chars)
 ```
 
-Open `dist/install.html` and drag one of the two links to your bookmarks bar:
+Open `dist/install.html` and drag one of the links to your bookmarks bar:
 
 - **Clean page** fetches the latest `rules.json` from this repo's `main` on every click,
   so new rules arrive a few minutes after they merge, with nothing to reinstall.
@@ -108,7 +108,7 @@ step, for example `rules/example.com.json: step 2: bad argument to style (see RE
 ## From an agent
 
 There is no MCP server or CLI beyond the build. An agent adds a site the same way a
-person does: write `rules/<host>.json` plus the two fixtures, run `make test build`
+person does: write `rules/<host>.json` plus its fixtures, run `make test build`
 (non-zero exit on an invalid rule or a fixture mismatch), and commit `rules.json`.
 The tests run offline against the fixtures, so no browser is needed.
 
@@ -117,7 +117,7 @@ The tests run offline against the fixtures, so no browser is needed.
 - `cleaner.js` is the fixed interpreter: it knows the step types and nothing about
   any site. It is frozen into the installed bookmark.
 - `build.js` validates `rules/*.json`, writes the committed `rules.json` bundle, and
-  writes both bookmarklets (`dist/bookmarklet-auto.txt`, `dist/bookmarklet.txt`) and
+  writes the bookmarklets (`dist/bookmarklet-auto.txt`, `dist/bookmarklet.txt`) and
   `dist/install.html`.
 - The auto-update bookmark fetches only data, so a merged rule can change what is
   removed but can never run code.
