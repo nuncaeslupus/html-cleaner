@@ -18,7 +18,9 @@ Two inputs, both cheap:
   trivially testable and cannot fail because a network call did.
 
 A task is eligible when it is `open`, every dep is `done`, and every
-`requires:` capability is offered by the current surface.
+`requires:` capability is offered by the current surface: the capabilities in
+`<session>/surface_profile.json` (what `detect_surface.sh` measured), plus any
+`--capability` passed.
 
 Output is one compact JSON object per line, best first — small on purpose,
 since every byte lands in a model's context:
@@ -370,10 +372,11 @@ def state_from_issues(
             # loses the distinction. So a label carries it instead — every
             # surface can read labels — and `state_reason` refines the answer
             # when it happens to be there.
-            reason = issue.get("state_reason")
+            # REST spells it `state_reason`, `gh --json` spells it `stateReason`.
+            reason = issue.get("state_reason") or issue.get("stateReason")
             if cancelled_label in labels:
                 derived = "cancelled"
-            elif reason is None:
+            elif not reason:
                 derived = "done"
             else:
                 derived = "done" if str(reason).lower() == "completed" else "cancelled"
@@ -464,6 +467,20 @@ def parse_front_matter(text: str) -> dict[str, Any]:
     return data
 
 
+LABEL_MAX_WORDS = 5
+
+
+def display_label(label: Any, title: str) -> str:
+    """The short human name a task is shown by: its `label:`, else the first
+    five words of the title with an ellipsis, so a bare id never stands alone."""
+    if label and str(label).strip():
+        return " ".join(str(label).split())
+    words = title.split()
+    if len(words) <= LABEL_MAX_WORDS:
+        return " ".join(words)
+    return " ".join(words[:LABEL_MAX_WORDS]) + "…"
+
+
 def _as_list(value: Any) -> list[str]:
     """Front matter may write a single value bare: `requires: surface:cli`.
 
@@ -509,10 +526,19 @@ def load_tasks(tasks_dir: Path) -> tuple[list[dict[str, Any]], list[str]]:
             warnings.append(f"{path}: duplicate id {task_id} (also {seen[task_id]}) — skipped")
             continue
         seen[task_id] = path
+        title = str(meta.get("title", task_id))
+        label = display_label(meta.get("label"), title)
+        if meta.get("label") and len(label.split()) > LABEL_MAX_WORDS:
+            warnings.append(
+                f"{path}: `label:` has more than {LABEL_MAX_WORDS} words — "
+                "keep it short enough to read at a glance"
+            )
         tasks.append(
             {
                 "id": task_id,
-                "title": str(meta.get("title", task_id)),
+                "title": title,
+                "label": label,
+                "display": f"{label} ({task_id})",
                 "path": str(path),
                 "priority": meta.get("priority", 0)
                 if isinstance(meta.get("priority", 0), int)
@@ -610,8 +636,10 @@ def select(
         detail = ", ".join(sorted(gated)[:5]) + ("…" if len(gated) > 5 else "")
         warnings.append(
             f"{len(gated)} task(s) were filtered out by `requires:` against the current "
-            f"capabilities ({', '.join(sorted(capabilities)) or 'none'}): {detail}. Run "
-            "`bash claude-arsenal/bin/detect_surface.sh` if this surface has not been detected."
+            f"capabilities ({', '.join(sorted(capabilities)) or 'none'}): {detail}. They come "
+            "from surface_profile.json (`bash claude-arsenal/bin/detect_surface.sh`) plus "
+            "--capability; declare a host-specific one as a probe under [capabilities] in "
+            "arsenal/config.toml."
         )
 
     # Highest priority first, then by id so two agents reading the same graph
@@ -619,6 +647,23 @@ def select(
     # for the same task more often than necessary.
     eligible.sort(key=lambda t: (-int(t["priority"]), t["id"]))
     return eligible[:limit], warnings
+
+
+def _profile_capabilities() -> set[str]:
+    """What `detect_surface.sh` recorded for this surface, or nothing.
+
+    The profile had no reader: capabilities arrived only through `--capability`,
+    which the session-start protocol never passes, so a detected surface still
+    offered `(none)` and the hint told the session to run the probe it had just
+    run (#481). Unreadable or malformed reads as empty — an undetected surface
+    is exactly what the gated-task warning already explains.
+    """
+    try:
+        data = json.loads((_session_dir() / "surface_profile.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return set()
+    caps = data.get("capabilities") if isinstance(data, dict) else None
+    return {c for c in caps if isinstance(c, str)} if isinstance(caps, list) else set()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -634,7 +679,15 @@ def main(argv: list[str] | None = None) -> int:
         "state is derived from them, so no --state is needed",
     )
     parser.add_argument(
-        "--capability", action="append", default=[], help="repeatable, e.g. surface:cli"
+        "--capability",
+        action="append",
+        default=[],
+        help="repeatable, e.g. surface:cli; adds to the surface profile",
+    )
+    parser.add_argument(
+        "--no-profile",
+        action="store_true",
+        help="ignore surface_profile.json; offer only the --capability values",
     )
     parser.add_argument("--workspace")
     parser.add_argument("--tag", action="append", default=[])
@@ -723,6 +776,8 @@ def main(argv: list[str] | None = None) -> int:
             row = {
                 "id": task["id"],
                 "title": task["title"],
+                "label": task["label"],
+                "display": task["display"],
                 "state": merged.get(task["id"], "open"),
             }
             print(json.dumps(row, separators=(",", ":")))
@@ -751,7 +806,8 @@ def main(argv: list[str] | None = None) -> int:
         selection, sel_warnings = select(
             tasks,
             state,
-            capabilities=set(args.capability),
+            capabilities=set(args.capability)
+            | (set() if args.no_profile else _profile_capabilities()),
             workspace=args.workspace,
             tags=set(args.tag) or None,
             limit=limit,
@@ -763,6 +819,8 @@ def main(argv: list[str] | None = None) -> int:
                     {
                         "id": task["id"],
                         "title": task["title"],
+                        "label": task["label"],
+                        "display": task["display"],
                         "path": task["path"],
                         "priority": task["priority"],
                         "gate": task["gate"],

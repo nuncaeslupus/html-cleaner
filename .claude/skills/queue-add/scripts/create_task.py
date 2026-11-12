@@ -43,10 +43,15 @@ TEMPLATE = """\
 ---
 id: {task_id}
 title: {title}
+label: {label}
 priority: {priority}
 {extra}---
 
-{body}
+{body}{gate}"""
+
+# Appended only when --body brings no gate of its own (#501): a body that already
+# has one got this placeholder too, and the task carried two gate sections.
+PLACEHOLDER_GATE = """\
 ## Acceptance gate
 
 <!-- Replace this with a fenced bash block. A gate that is only prose runs
@@ -61,10 +66,34 @@ false
 ```
 """
 
+# The same reading gate_run.sh applies: the first `## Acceptance gate` section,
+# up to the next `##` heading, and the first fenced bash/sh block inside it.
+GATE_SECTION_RE = re.compile(r"##\s+Acceptance gate\s*\n(.*?)(?=\n##\s|\Z)", re.S | re.I)
+GATE_FENCE_RE = re.compile(r"```(?:bash|sh)\s*\n(.*?)```", re.S)
+
+
+def body_gate(body: str) -> bool:
+    """True when `body` brings its own gate. Raises ValueError on a prose-only one.
+
+    A heading with no fenced block would leave the first gate section — the one
+    gate_run.sh reads — empty, with the placeholder in a second section nothing
+    runs, so it is refused rather than papered over.
+    """
+    m = GATE_SECTION_RE.search(body)
+    if not m:
+        return False
+    if not GATE_FENCE_RE.search(m.group(1)):
+        raise ValueError(
+            "--body has an '## Acceptance gate' section with no fenced ```bash block. "
+            "Add the block, or drop the heading to get the placeholder gate."
+        )
+    return True
+
 
 # The documented meaning of `priority`: task size, larger runs sooner. Kept here
 # rather than in prose so `--size` and the board's convention check agree on one
 # set of values.
+LABEL_MAX_WORDS = 5
 SIZE_PRIORITY = {"S": 10, "M": 5, "L": 1}
 
 
@@ -144,6 +173,7 @@ def build(
     tasks_dir: Path,
     *,
     title: str,
+    label: str | None = None,
     priority: int,
     deps: list[str],
     requires: list[str],
@@ -154,6 +184,13 @@ def build(
 ) -> tuple[str, str]:
     """Return (task_id, file contents). Raises ValueError on a bad dep or title."""
     known = existing_ids(tasks_dir)
+    has_gate = body_gate(body)
+
+    # The label is what a board shows beside the id, so it stays short: five
+    # words at most. Left out, it is the first five words of the title.
+    label = label or " ".join(title.split()[:LABEL_MAX_WORDS])
+    if len(label.split()) > LABEL_MAX_WORDS:
+        raise ValueError(f"label {label!r} is longer than {LABEL_MAX_WORDS} words")
 
     # A title is not decoration: `handle_sync.py` and `arsenal-queue.yml` both
     # title the issue handle from it, and `task_id_from_issue` resolves an issue
@@ -211,9 +248,11 @@ def build(
     text = TEMPLATE.format(
         task_id=task_id,
         title=json.dumps(title),
+        label=json.dumps(label),
         priority=priority,
         extra=extra,
-        body=(body.strip() + "\n\n") if body.strip() else "",
+        body=(body.strip() + ("\n" if has_gate else "\n\n")) if body.strip() else "",
+        gate="" if has_gate else PLACEHOLDER_GATE,
     )
     return task_id, text
 
@@ -223,6 +262,7 @@ def main(argv: list[str] | None = None) -> int:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("--title", required=True)
+    parser.add_argument("--label", help="short name shown beside the id, 5 words max")
     parser.add_argument(
         "--size",
         choices=sorted(SIZE_PRIORITY),
@@ -239,7 +279,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--tag", action="append", default=[], dest="tags")
     parser.add_argument("--workspace")
     parser.add_argument("--max-attempts", type=int, dest="max_attempts")
-    parser.add_argument("--body", default="", help="task detail placed above the gate")
+    parser.add_argument(
+        "--body",
+        default="",
+        help="task detail above the gate; its own ## Acceptance gate replaces the placeholder",
+    )
     parser.add_argument("--tasks-dir", type=Path, default=Path("arsenal/tasks"))
     args = parser.parse_args(argv)
 
@@ -260,6 +304,7 @@ def main(argv: list[str] | None = None) -> int:
         task_id, text = build(
             args.tasks_dir,
             title=args.title,
+            label=args.label,
             priority=priority,
             deps=args.deps,
             requires=args.requires,
@@ -281,7 +326,10 @@ def main(argv: list[str] | None = None) -> int:
     print("", file=sys.stderr)
     print("Open its issue handle with your GitHub tools:", file=sys.stderr)
     print(f"  title: {args.title}", file=sys.stderr)
-    print("  labels: arsenal:task", file=sys.stderr)
+    print(
+        f"  labels: arsenal:task (or your `task-label` setting), arsenal-id:{task_id}",
+        file=sys.stderr,
+    )
     print(f"  body:  {TASK_MARKER.format(task_id=task_id)}", file=sys.stderr)
     print(f"         Task defined in `{path}`", file=sys.stderr)
     return 0

@@ -64,6 +64,16 @@
         ],
         "matcher": "compact"
       }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}\"/claude-arsenal/bin/compact_resume.sh instruct"
+          }
+        ]
+      }
     ]
   }
 }
